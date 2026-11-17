@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gestão 360 · endereço</title>
+<style>
+  :root { --bg:#0b0e14; --surface:#111520; --border:#232b3d; --ink-100:#f1f5f9; --ink-300:#b9c2d0; --ink-500:#7c8698; --brand:#ffcc00; --red:#f87171; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink-300); font: 14px/1.5 "Segoe UI", system-ui, sans-serif; display: grid; place-items: center; padding: 24px; }
+  .card { width: 100%; max-width: 400px; }
+  .marca { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+  .logo { width: 36px; height: 36px; border-radius: 10px; background: var(--brand); color: #111; font-weight: 800; display: grid; place-items: center; font-size: 17px; }
+  h1 { margin: 0; color: var(--ink-100); font-size: 17px; }
+  p { margin: 0 0 14px; color: var(--ink-500); font-size: 13px; }
+  label { display: block; font-size: 12px; color: var(--ink-500); margin-bottom: 6px; }
+  input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--ink-100); font: inherit; outline: none; }
+  input:focus { border-color: #33405c; }
+  button { margin-top: 14px; width: 100%; padding: 10px 12px; border: 0; border-radius: 10px; background: var(--brand); color: #111; font: inherit; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: default; }
+  .erro { color: var(--red); font-size: 12.5px; margin-top: 10px; min-height: 18px; }
+</style>
+</head>
+<body>
+  <form class="card" id="f">
+    <div class="marca"><span class="logo">G</span><h1>Gestão 360 no PC</h1></div>
+    <p>Qual é o endereço do Gestão 360 do seu escritório? É o mesmo que você usa no navegador.</p>
+    <label for="url">Endereço</label>
+    <input id="url" type="url" required autofocus placeholder="https://gestao.seuescritorio.com.br">
+    <button id="ok" type="submit">Conectar</button>
+    <div class="erro" id="erro"></div>
+  </form>
+<script>
+  // Tela LOCAL (não é o site): só pode ler e gravar o endereço
+  // (capabilities/configuracao.json).
+  const invoke = window.__TAURI__.core.invoke;
+  const campo = document.getElementById("url");
+  const erro = document.getElementById("erro");
+  const ok = document.getElementById("ok");
+  invoke("endereco_atual").then((v) => { if (v) campo.value = v; }).catch(() => {});
+  document.getElementById("f").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    erro.textContent = "";
+    ok.disabled = true;
+    ok.textContent = "Conectando…";
+    try {
+      await invoke("definir_endereco", { endereco: campo.value });
+    } catch (x) {
+      erro.textContent = String(x);
+      ok.disabled = false;
+      ok.textContent = "Conectar";
+    }
+  });
+</script>
+</body>
+</html>

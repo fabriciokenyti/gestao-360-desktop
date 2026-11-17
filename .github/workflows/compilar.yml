@@ -1,0 +1,35 @@
+# Confere que a casca compila (pull requests). Não publica nada.
+# O instalador fica em "Artifacts" da execução, para testar antes de publicar.
+name: Compilar (Windows)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Ícones (a partir de icone.png)
+        run: npx tauri icon icone.png
+      - name: Compilar o instalador
+        run: npx tauri build --bundles nsis
+        env:
+          # o build assina o pacote de atualização (exige a chave mesmo sem publicar)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Gestao360-instalador-windows
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error

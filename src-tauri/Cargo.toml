@@ -1,0 +1,34 @@
+[package]
+name = "gestao360-desktop"
+version = "0.2.0"
+description = "Gestão 360 no PC: entalho no topo da tela + janela principal"
+edition = "2021"
+
+[lib]
+name = "gestao360_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-updater = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Windows: detectar programa em tela cheia (só leitura da janela em primeiro plano)
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
+
+[profile.release]
+# instalador menor e app mais leve (o PC é dos softwares pesados — spec 027)
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

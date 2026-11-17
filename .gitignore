@@ -1,0 +1,7 @@
+# gerados pelo build (o CI gera os ícones a partir de icone.png)
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/icons/
+# chave de assinatura NUNCA entra aqui (fica no PC do responsável + segredo do GitHub)
+*.key

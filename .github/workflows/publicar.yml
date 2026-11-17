@@ -1,0 +1,52 @@
+# Publica uma VERSÃO: compila, ASSINA o pacote de atualização com a chave do
+# escritório (segredo TAURI_SIGNING_PRIVATE_KEY) e cria o release vX.Y.Z com o
+# instalador + latest.json. Os apps instalados acham a versão nova por esse
+# latest.json (tauri.conf.json → plugins.updater.endpoints).
+#
+# Como publicar: suba a versão em src-tauri/tauri.conf.json (e Cargo.toml) na
+# main e rode este workflow (Actions → Publicar versão → Run workflow).
+name: Publicar versão
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publicar
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Ícones (a partir de icone.png)
+        run: npx tauri icon icone.png
+      - name: Compilar, assinar e publicar
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          tauriScript: npx tauri
+          args: --bundles nsis
+          tagName: v__VERSION__
+          releaseName: Gestão 360 v__VERSION__
+          releaseBody: |
+            Instalador do Gestão 360 para Windows (o arquivo `.exe` abaixo).
+            Quem já tem o app instalado recebe esta versão pela bandeja: ícone do Gestão 360 → Atualizar.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true

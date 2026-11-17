@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "configuracao",
+  "description": "Tela LOCAL de primeiro uso: só lê e grava o endereço do Gestão 360.",
+  "windows": ["configuracao"],
+  "permissions": ["core:default", "allow-definir-endereco", "allow-endereco-atual"]
+}
