@@ -1,6 +1,6 @@
 [package]
 name = "gestao360-desktop"
-version = "0.2.1"
+version = "0.3.0"
 description = "Gestão 360 no PC: entalho no topo da tela + janela principal"
 edition = "2021"
 

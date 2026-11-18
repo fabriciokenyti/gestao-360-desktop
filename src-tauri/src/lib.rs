@@ -17,7 +17,7 @@
 //!   bandeja (nunca atualiza sozinho). Só aceita versão ASSINADA pela chave do
 //!   escritório (chave pública em tauri.conf.json).
 //!
-//! O site remoto só pode chamar QUATRO comandos (ver `liberar_site`). O app não
+//! O site remoto só pode chamar SEIS comandos (ver `liberar_site`). O app não
 //! age sobre o PC (decisão de 15/11): nada de abrir programas, arquivos, volume.
 
 use std::{
@@ -81,6 +81,8 @@ const CONFERIR_A_CADA: Duration = Duration::from_secs(6 * 60 * 60);
 static VERSAO_NOVA: Mutex<Option<String>> = Mutex::new(None);
 /// Evita dois downloads se o item for clicado duas vezes.
 static INSTALANDO: AtomicBool = AtomicBool::new(false);
+/// Abriu agora depois de atualizar: de qual versão veio (vale para esta execução).
+static ATUALIZADO_DE: Mutex<Option<String>> = Mutex::new(None);
 
 /// Item "Procurar atualizações" / "Atualizar para a versão X" da bandeja.
 struct ItemAtualizar(MenuItem<tauri::Wry>);
@@ -92,6 +94,9 @@ struct Config {
     endereco: Option<String>,
     /// None = padrão (esconde).
     esconder_tela_cheia: Option<bool>,
+    /// Versão em uso quando começou uma atualização: ao reabrir, se mudou, o app
+    /// avisa "Atualizado para a versão X" (entalho e janela principal).
+    versao_anterior: Option<String>,
 }
 
 fn caminho_config(app: &AppHandle) -> Option<PathBuf> {
@@ -136,7 +141,7 @@ fn base_configurada(app: &AppHandle) -> Option<Url> {
 
 // ── permissões do site remoto ────────────────────────────────────────────────
 
-/// O site do escritório (e só ele) pode chamar estes quatro comandos, nas duas
+/// O site do escritório (e só ele) pode chamar estes seis comandos, nas duas
 /// janelas da casca. Nada mais nativo fica exposto à página remota.
 fn liberar_site(app: &AppHandle, base: &Url) {
     let origem = base.origin().ascii_serialization();
@@ -149,7 +154,9 @@ fn liberar_site(app: &AppHandle, base: &Url) {
             .permission("allow-entalho-aberto")
             .permission("allow-entalho-ocultar")
             .permission("allow-abrir-principal")
-            .permission("allow-notificar"),
+            .permission("allow-notificar")
+            .permission("allow-estado-app")
+            .permission("allow-atualizar-app"),
     );
     if let Err(e) = resultado {
         // já liberado nesta execução (trocou e voltou ao mesmo endereço): segue
@@ -447,6 +454,68 @@ fn aviso(app: &AppHandle, titulo: &str, corpo: &str) -> Result<(), String> {
 
 // ── atualização do programa ──────────────────────────────────────────────────
 //
+// 0.3.0: à vista, não só na bandeja (18/11, padrão do Kobi). A casca conta às
+// páginas (entalho e principal) pelo evento "g360:app" e responde `estado_app`;
+// elas mostram "Nova versão · clique", a barrinha "Atualizando 62%" e, ao
+// reabrir, "Atualizado para a versão X".
+
+/// Manda um evento "g360:app" para as janelas do site. `detalhe` é JSON montado aqui.
+fn avisar_paginas(app: &AppHandle, detalhe: &serde_json::Value) {
+    let js = format!("window.dispatchEvent(new CustomEvent('g360:app',{{detail:{detalhe}}}))");
+    for rotulo in [ENTALHO, PRINCIPAL] {
+        if let Some(w) = app.get_webview_window(rotulo) {
+            let _ = w.eval(&js);
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EstadoApp {
+    versao: String,
+    nova: Option<String>,
+    atualizado_de: Option<String>,
+}
+
+/// O site pergunta: versão do programa, se há nova e se acabou de atualizar.
+#[tauri::command]
+async fn estado_app(app: AppHandle) -> EstadoApp {
+    EstadoApp {
+        versao: app.package_info().version.to_string(),
+        nova: VERSAO_NOVA.lock().ok().and_then(|v| v.clone()),
+        atualizado_de: ATUALIZADO_DE.lock().ok().and_then(|v| v.clone()),
+    }
+}
+
+/// O site pede para atualizar (aviso do entalho, botão da janela principal). Só
+/// instala pacote ASSINADO pela chave do escritório; o resto é igual à bandeja.
+#[tauri::command]
+async fn atualizar_app(app: AppHandle) -> Result<(), String> {
+    if INSTALANDO.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+    if let Err(e) = instalar_atualizacao(&app).await {
+        avisar_paginas(&app, &serde_json::json!({ "tipo": "erro", "mensagem": e }));
+        let _ = aviso(&app, "Não deu para atualizar agora", &format!("Tente de novo mais tarde. ({e})"));
+    }
+    INSTALANDO.store(false, Ordering::SeqCst);
+    Ok(())
+}
+
+/// Ao abrir: se a versão mudou desde o início da última atualização, guarda
+/// "atualizado de X" para as páginas e limpa a marca.
+fn registrar_atualizacao_concluida(app: &AppHandle) {
+    let mut config = ler_config(app);
+    let Some(antes) = config.versao_anterior.take() else { return };
+    let agora = app.package_info().version.to_string();
+    if antes != agora {
+        if let Ok(mut v) = ATUALIZADO_DE.lock() {
+            *v = Some(antes);
+        }
+    }
+    let _ = gravar_config(app, &config);
+}
+//
 // Só a CASCA se atualiza por aqui (o sistema em si é o site: atualiza sozinho).
 // O pacote vem dos releases do repositório público e só é aceito se a
 // assinatura bater com a chave pública de tauri.conf.json.
@@ -463,6 +532,7 @@ async fn conferir_atualizacao(app: &AppHandle, pedido: bool) -> Result<(), Strin
         return Ok(());
     };
     let versao = nova.version.clone();
+    avisar_paginas(app, &serde_json::json!({ "tipo": "nova", "versao": versao }));
     if let Some(item) = app.try_state::<ItemAtualizar>() {
         let _ = item.0.set_text(format!("Atualizar para a versão {versao}"));
     }
@@ -476,7 +546,7 @@ async fn conferir_atualizacao(app: &AppHandle, pedido: bool) -> Result<(), Strin
         aviso(
             app,
             &format!("Nova versão do Gestão 360 ({versao})"),
-            "Quando quiser: ícone do Gestão 360 na bandeja → Atualizar. Leva menos de um minuto.",
+            "Quando quiser: clique no aviso do entalho (ou em Atualizar na bandeja). Leva segundos.",
         )?;
     }
     Ok(())
@@ -489,12 +559,34 @@ async fn instalar_atualizacao(app: &AppHandle) -> Result<(), String> {
     let Some(nova) = nova else {
         return conferir_atualizacao(app, true).await;
     };
-    aviso(
-        app,
-        "Atualizando o Gestão 360",
-        &format!("Baixando a versão {}… o app fecha e abre de novo sozinho.", nova.version),
-    )?;
-    nova.download_and_install(|_, _| {}, || {}).await.map_err(|e| e.to_string())?;
+    // marca a versão de agora: ao reabrir, se mudou, o app avisa "Atualizado"
+    let mut config = ler_config(app);
+    config.versao_anterior = Some(app.package_info().version.to_string());
+    let _ = gravar_config(app, &config);
+
+    avisar_paginas(app, &serde_json::json!({ "tipo": "progresso", "pct": 0 }));
+    let mut baixado: u64 = 0;
+    let mut ultimo: i64 = -1;
+    let app_progresso = app.clone();
+    let app_fim = app.clone();
+    nova
+        .download_and_install(
+            move |pedaco, total| {
+                baixado += pedaco as u64;
+                // porcentagem só quando muda (no máx. ~100 eventos)
+                let pct = match total {
+                    Some(t) if t > 0 => ((baixado * 100) / t).min(100) as i64,
+                    _ => 0,
+                };
+                if pct != ultimo {
+                    ultimo = pct;
+                    avisar_paginas(&app_progresso, &serde_json::json!({ "tipo": "progresso", "pct": pct }));
+                }
+            },
+            move || avisar_paginas(&app_fim, &serde_json::json!({ "tipo": "instalando" })),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
     app.restart();
 }
 
@@ -512,6 +604,7 @@ fn atualizar_pela_bandeja(app: &AppHandle) {
             conferir_atualizacao(&app, true).await
         };
         if let Err(e) = resultado {
+            avisar_paginas(&app, &serde_json::json!({ "tipo": "erro", "mensagem": e }));
             let _ = aviso(&app, "Não deu para atualizar agora", &format!("Tente de novo mais tarde. ({e})"));
         }
         INSTALANDO.store(false, Ordering::SeqCst);
@@ -657,6 +750,8 @@ pub fn run() {
             entalho_ocultar,
             abrir_principal,
             notificar,
+            estado_app,
+            atualizar_app,
             definir_endereco,
             endereco_atual
         ])
@@ -667,6 +762,7 @@ pub fn run() {
                 Ordering::Relaxed,
             );
             montar_bandeja(&handle)?;
+            registrar_atualizacao_concluida(&handle);
             vigiar_atualizacoes(handle.clone());
             // Ctrl+Alt+G abre/fecha o entalho de qualquer lugar. Se outro programa
             // já usa o atalho, segue sem ele (não derruba o app).
