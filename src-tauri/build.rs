@@ -1,7 +1,7 @@
 fn main() {
     // Lista FECHADA de comandos que a casca expõe. Cada um vira uma permissão
     // `allow-<comando>`; quem pode chamar o quê está nas capabilities:
-    // - o SITE (remoto) só recebe os quatro primeiros (lib.rs, liberar_site);
+    // - o SITE (remoto) só recebe os seis primeiros (lib.rs, liberar_site);
     // - a tela local de primeiro uso recebe os dois de endereço
     //   (capabilities/configuracao.json).
     // O app NÃO age sobre o PC (decisão de 15/11): nada de abrir programas,
@@ -12,6 +12,8 @@ fn main() {
             "entalho_ocultar",
             "abrir_principal",
             "notificar",
+            "estado_app",
+            "atualizar_app",
             "definir_endereco",
             "endereco_atual",
         ]),

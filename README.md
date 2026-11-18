@@ -18,9 +18,11 @@ projetos e financeiro num relance) e o sistema completo numa janela própria.
 
 ## Atualizar
 
-O programa confere sozinho ao abrir e a cada 6 horas. Quando há versão nova, aparece uma
-notificação e o item **"Atualizar para a versão X"** na bandeja. Ele **nunca atualiza sozinho**: você
-clica quando quiser, ele baixa, fecha e abre de novo.
+O programa confere sozinho ao abrir e a cada 6 horas. Quando há versão nova, **o entalho avisa**
+("Nova versão do app · clique para atualizar"), a janela principal mostra um aviso com o botão
+**Atualizar**, e o menu da bandeja também oferece. Ele **nunca atualiza sozinho**: você clica quando
+quiser, a pílula mostra a barrinha **"Atualizando 62%"**, o app fecha, abre de novo e avisa
+**"App atualizado · versão X"**.
 
 Toda versão é **assinada**. O programa só instala o que bater com a chave pública gravada nele
 (`src-tauri/tauri.conf.json` → `plugins.updater.pubkey`). Um pacote adulterado é recusado.
@@ -35,8 +37,8 @@ Toda versão é **assinada**. O programa só instala o que bater com a chave pú
 | **Atalho** | **Ctrl+Alt+G** abre e fixa o painel de qualquer lugar. |
 | **Lembretes** | Na hora de um lembrete, a pílula avisa e sai uma notificação do Windows. |
 
-**Segurança:** o site só pode pedir quatro coisas ao programa (`entalho_aberto`, `entalho_ocultar`,
-`abrir_principal`, `notificar`). O programa **não age sobre o PC**: nada de abrir programas,
+**Segurança:** o site só pode pedir seis coisas ao programa (`entalho_aberto`, `entalho_ocultar`,
+`abrir_principal`, `notificar`, `estado_app` e `atualizar_app` — este só instala versão assinada). O programa **não age sobre o PC**: nada de abrir programas,
 arquivos, volume ou desligar. Lista fechada em `src-tauri/build.rs`.
 
 ## Publicar uma versão (responsável)
