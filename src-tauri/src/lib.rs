@@ -9,7 +9,8 @@
 //!   programa de baixo: um vigia leve (`vigiar_mouse`) lê a posição do mouse e só
 //!   liga a interação quando ele está sobre o desenho (pílula ou painel). A página
 //!   diz qual desenho vale (`entalho_aberto`).
-//! - **principal**: o Gestão 360 completo. Fechar só esconde (fica na bandeja).
+//! - **principal**: o Gestão 360 completo, SOB DEMANDA: nasce ao abrir (bandeja,
+//!   "Abrir app", Entrar) e fechar a destrói, liberando a memória (0.2.1).
 //! - **bandeja**: mostrar/ocultar o entalho, abrir o sistema, iniciar com o
 //!   Windows, trocar o endereço, atualizar, sair.
 //! - **atualização**: confere ao abrir e a cada 6 h; avisa e espera o clique na
@@ -300,24 +301,51 @@ fn atalho_entalho(app: &AppHandle) {
     }
 }
 
+/// Janela principal SOB DEMANDA (0.2.1): só existe enquanto está aberta. Fechar
+/// a destrói de verdade — escondida, ela segurava ~150 MB à toa (medido em 17/11:
+/// 353 MB com ela × meta de 250 MB da spec 027). O entalho segue sempre vivo.
+fn criar_principal(app: &AppHandle, caminho: &str) -> Result<(), String> {
+    let base = base_configurada(app).ok_or("sem endereço configurado")?;
+    let url = base.join(caminho).map_err(|e| e.to_string())?;
+    if url.origin() != base.origin() {
+        return Err("fora do site".into());
+    }
+    WebviewWindowBuilder::new(app, PRINCIPAL, WebviewUrl::External(url))
+        .title("Gestão 360")
+        .inner_size(1280.0, 800.0)
+        .min_inner_size(400.0, 500.0)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Traz a principal (bandeja, abrir de novo pelo menu Iniciar). Não existe? Cria
+/// — fora da thread do evento, que no Windows não pode criar janela e esperar.
 fn mostrar_principal(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(PRINCIPAL) {
         let _ = w.unminimize();
         let _ = w.show();
         let _ = w.set_focus();
+        return;
     }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = criar_principal(&app, "/dashboard") {
+            eprintln!("[casca] janela principal: {e}");
+        }
+    });
 }
 
 fn abrir_janelas(app: &AppHandle, base: &Url, oculto: bool) -> tauri::Result<()> {
     liberar_site(app, base);
 
-    if app.get_webview_window(PRINCIPAL).is_none() {
+    // iniciado pelo Windows (--oculto): só o entalho; a principal nasce no clique
+    if !oculto && app.get_webview_window(PRINCIPAL).is_none() {
         let url = base.join("/dashboard").expect("caminho fixo válido");
         WebviewWindowBuilder::new(app, PRINCIPAL, WebviewUrl::External(url))
             .title("Gestão 360")
             .inner_size(1280.0, 800.0)
             .min_inner_size(400.0, 500.0)
-            .visible(!oculto)
             .build()?;
     }
 
@@ -514,7 +542,10 @@ async fn abrir_principal(app: AppHandle, caminho: String) -> Result<(), String> 
     if alvo.origin() != base.origin() {
         return Err("fora do site".into());
     }
-    let w = app.get_webview_window(PRINCIPAL).ok_or("janela principal fechada")?;
+    // principal fechada (agora ela é destruída ao fechar): nasce já no caminho pedido
+    let Some(w) = app.get_webview_window(PRINCIPAL) else {
+        return criar_principal(&app, &caminho);
+    };
     let destino = serde_json::to_string(alvo.as_str()).map_err(|e| e.to_string())?;
     w.eval(&format!("window.location.assign({destino})")).map_err(|e| e.to_string())?;
     mostrar_principal(&app);
@@ -651,9 +682,10 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|janela, evento| {
-            // fechar a principal ou o entalho só esconde: o app vive na bandeja
+            // fechar o entalho só esconde (a bandeja traz de volta). A principal
+            // FECHA de verdade e libera a memória; reabre pela bandeja/entalho.
             if let WindowEvent::CloseRequested { api, .. } = evento {
-                if janela.label() == PRINCIPAL || janela.label() == ENTALHO {
+                if janela.label() == ENTALHO {
                     api.prevent_close();
                     let _ = janela.hide();
                 }
