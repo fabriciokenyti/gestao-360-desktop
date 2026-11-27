@@ -348,22 +348,28 @@ fn criar_principal(app: &AppHandle, caminho: &str) -> Result<(), String> {
     if url.origin() != base.origin() {
         return Err("fora do site".into());
     }
+    construir_principal(app, url).map_err(|e| e.to_string())
+}
+
+/// ÚNICO lugar que monta a janela principal (0.3.3). Na 0.3.2 o tratamento de
+/// links estava só em `criar_principal`; a janela da ABERTURA do app nascia em
+/// `abrir_janelas` sem ele, e o "Ver prévia" seguia sem fazer nada.
+fn construir_principal(app: &AppHandle, url: Url) -> tauri::Result<()> {
     let app_links = app.clone();
     WebviewWindowBuilder::new(app, PRINCIPAL, WebviewUrl::External(url))
         .title("Gestão 360")
         .inner_size(1280.0, 800.0)
         .min_inner_size(400.0, 500.0)
         // Link que pede outra aba/janela (target=_blank, window.open), como o "abrir em
-        // nova aba" da proposta: abre no navegador padrão do Windows. Sem isto o clique
-        // não fazia nada. Só http/https; a casca nunca cria janela para o site.
+        // nova aba" e o "Ver prévia" da proposta: abre no navegador padrão do Windows.
+        // Só http/https; a casca nunca cria janela para o site.
         .on_new_window(move |url, _recursos| {
             if matches!(url.scheme(), "http" | "https") {
                 let _ = app_links.opener().open_url(url.as_str(), None::<&str>);
             }
             tauri::webview::NewWindowResponse::Deny
         })
-        .build()
-        .map_err(|e| e.to_string())?;
+        .build()?;
     Ok(())
 }
 
@@ -390,11 +396,7 @@ fn abrir_janelas(app: &AppHandle, base: &Url, oculto: bool) -> tauri::Result<()>
     // iniciado pelo Windows (--oculto): só o entalho; a principal nasce no clique
     if !oculto && app.get_webview_window(PRINCIPAL).is_none() {
         let url = base.join("/dashboard").expect("caminho fixo válido");
-        WebviewWindowBuilder::new(app, PRINCIPAL, WebviewUrl::External(url))
-            .title("Gestão 360")
-            .inner_size(1280.0, 800.0)
-            .min_inner_size(400.0, 500.0)
-            .build()?;
+        construir_principal(app, url)?;
     }
 
     if app.get_webview_window(ENTALHO).is_none() {
