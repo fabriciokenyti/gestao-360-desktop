@@ -39,7 +39,8 @@ Toda versão é **assinada**. O programa só instala o que bater com a chave pú
 
 **Segurança:** o site só pode pedir seis coisas ao programa (`entalho_aberto`, `entalho_ocultar`,
 `abrir_principal`, `notificar`, `estado_app` e `atualizar_app` — este só instala versão assinada). O programa **não age sobre o PC**: nada de abrir programas,
-arquivos, volume ou desligar. Lista fechada em `src-tauri/build.rs`.
+arquivos, volume ou desligar. Lista fechada em `src-tauri/build.rs`. Link do site que pede outra aba
+(ex.: "abrir em nova aba" da proposta) abre no navegador padrão do Windows (só http/https).
 
 ## Publicar uma versão (responsável)
 
