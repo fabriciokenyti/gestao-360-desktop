@@ -1,6 +1,6 @@
 [package]
 name = "gestao360-desktop"
-version = "0.3.1"
+version = "0.3.2"
 description = "Gestão 360 no PC: entalho no topo da tela + janela principal"
 edition = "2021"
 
@@ -18,6 +18,7 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2"
+tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

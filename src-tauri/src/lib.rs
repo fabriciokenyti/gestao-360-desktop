@@ -42,6 +42,7 @@ use tauri::{
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
 
 const ENTALHO: &str = "entalho";
@@ -347,10 +348,20 @@ fn criar_principal(app: &AppHandle, caminho: &str) -> Result<(), String> {
     if url.origin() != base.origin() {
         return Err("fora do site".into());
     }
+    let app_links = app.clone();
     WebviewWindowBuilder::new(app, PRINCIPAL, WebviewUrl::External(url))
         .title("Gestão 360")
         .inner_size(1280.0, 800.0)
         .min_inner_size(400.0, 500.0)
+        // Link que pede outra aba/janela (target=_blank, window.open), como o "abrir em
+        // nova aba" da proposta: abre no navegador padrão do Windows. Sem isto o clique
+        // não fazia nada. Só http/https; a casca nunca cria janela para o site.
+        .on_new_window(move |url, _recursos| {
+            if matches!(url.scheme(), "http" | "https") {
+                let _ = app_links.opener().open_url(url.as_str(), None::<&str>);
+            }
+            tauri::webview::NewWindowResponse::Deny
+        })
         .build()
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -765,6 +776,7 @@ pub fn run() {
         // iniciado pelo Windows → abre só o entalho (a principal fica escondida)
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--oculto"])))
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
