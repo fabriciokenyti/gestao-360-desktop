@@ -31,7 +31,7 @@ Toda versão é **assinada**. O programa só instala o que bater com a chave pú
 
 | Parte | O que é |
 |---|---|
-| **Entalho** | Janela fixa, sem borda, transparente, sempre no topo, no alto do monitor. Em repouso é uma pílula mínima; cresce quando há aviso e vira o painel ao passar o mouse. A área vazia deixa o clique passar para o programa de baixo. |
+| **Entalho** | Janela fixa, sem borda, transparente, sempre no topo, no alto do monitor. Em repouso é uma pílula mínima; cresce quando há aviso e vira o painel ao passar o mouse. A área vazia deixa o clique passar para o programa de baixo. Se a tela mudar com o app aberto (resolução, escala, monitor), ele volta sozinho para o meio. |
 | **Principal** | O Gestão 360 completo. Fechar só esconde: o app vive na bandeja. |
 | **Bandeja** | Mostrar/ocultar o entalho · Abrir o Gestão 360 · Iniciar com o Windows · Esconder com programa em tela cheia · Trocar endereço… · Atualizar · Sair. |
 | **Atalho** | **Ctrl+Alt+G** abre e fixa o painel de qualquer lugar. |
