@@ -72,6 +72,8 @@ static OCULTO_PELO_USUARIO: AtomicBool = AtomicBool::new(false);
 static OCULTO_POR_TELA_CHEIA: AtomicBool = AtomicBool::new(false);
 /// A tela cheia é conferida a cada N voltas do vigia (~0,5 s).
 const TELA_CHEIA_A_CADA: u32 = 7;
+/// A cada quantas voltas do vigia (~2 s) confere se a janela continua no meio.
+const RECENTRAR_A_CADA: u32 = 30;
 
 /// Atualização: 1ª conferência pouco depois de abrir (sem disputar a partida do
 /// Windows), depois a cada 6 h. Uma consulta pequena ao GitHub; nada mais.
@@ -166,21 +168,45 @@ fn liberar_site(app: &AppHandle, base: &Url) {
 
 // ── janelas ──────────────────────────────────────────────────────────────────
 
-/// Janela FIXA do entalho, centralizada no alto do monitor em que ela está.
-fn posicionar(w: &WebviewWindow) -> tauri::Result<()> {
-    let monitor = match w.current_monitor()? {
+/// Monitor em que a janela está (ou o principal, se o Windows não disser).
+fn monitor_da(w: &WebviewWindow) -> Option<tauri::Monitor> {
+    match w.current_monitor().ok().flatten() {
         Some(m) => Some(m),
-        None => w.primary_monitor()?,
-    };
-    let Some(m) = monitor else { return Ok(()) };
+        None => w.primary_monitor().ok().flatten(),
+    }
+}
+
+/// Onde a janela do entalho deve ficar neste monitor: centralizada no alto,
+/// no tamanho da janela convertido pela escala do monitor.
+fn lugar_no_monitor(m: &tauri::Monitor) -> (PhysicalPosition<i32>, PhysicalSize<u32>) {
     let escala = m.scale_factor();
     let area = *m.size();
     let largura = ((JANELA.0 * escala) as u32).min(area.width);
     let altura = ((JANELA.1 * escala) as u32).min(area.height);
-    w.set_size(PhysicalSize::new(largura, altura))?;
     let x = m.position().x + (area.width as i32 - largura as i32) / 2;
-    w.set_position(PhysicalPosition::new(x, m.position().y))?;
+    (PhysicalPosition::new(x, m.position().y), PhysicalSize::new(largura, altura))
+}
+
+/// Janela FIXA do entalho, centralizada no alto do monitor em que ela está.
+fn posicionar(w: &WebviewWindow) -> tauri::Result<()> {
+    let Some(m) = monitor_da(w) else { return Ok(()) };
+    let (pos, tam) = lugar_no_monitor(&m);
+    w.set_size(tam)?;
+    w.set_position(pos)?;
     Ok(())
+}
+
+/// A janela saiu do lugar? Acontece quando a tela muda com o app aberto: outra
+/// resolução, outra escala do Windows, monitor plugado/tirado, notebook na base.
+/// O Windows não reposiciona a janela por nós, e a pílula ficava fora do meio.
+fn fora_do_lugar(w: &WebviewWindow) -> bool {
+    let Some(m) = monitor_da(w) else { return false };
+    let (alvo, tam_alvo) = lugar_no_monitor(&m);
+    let (Ok(pos), Ok(tam)) = (w.outer_position(), w.outer_size()) else { return false };
+    (pos.x - alvo.x).abs() > 2
+        || (pos.y - alvo.y).abs() > 2
+        || tam.width.abs_diff(tam_alvo.width) > 2
+        || tam.height.abs_diff(tam_alvo.height) > 2
 }
 
 /// O mouse está sobre o desenho que vale agora (pílula ou painel)?
@@ -237,6 +263,10 @@ fn vigiar_mouse(app: AppHandle) {
             }
             if !w.is_visible().unwrap_or(false) {
                 continue;
+            }
+            // A tela mudou com o app aberto? Volta para o meio do alto do monitor.
+            if voltas % RECENTRAR_A_CADA == 0 && fora_do_lugar(&w) {
+                let _ = posicionar(&w);
             }
             let Some(dentro) = mouse_no_desenho(&w) else { continue };
             if dentro_antes != Some(dentro) {
